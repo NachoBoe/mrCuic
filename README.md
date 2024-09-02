@@ -21,7 +21,10 @@ En una segunda terminal correr:
     npm install
 
 ## Uso
-Este proyecto utiliza el cliente de OpenAi. Para poder utilizarlo es necesario una API KEY. Agregar en la carpete my_orchestrator un archivo .env y agregar la api key como variable de entorno (OPENAI_API_KEY="my_api_key")
+Este proyecto utiliza el cliente de OpenAi. Para poder utilizarlo es necesario una API KEY. Agregar en la carpete my_orchestrator un archivo .env y agregar la api key como variable de entorno.
+
+
+    OPENAI_API_KEY="my_api_key"
 
 Para correr el proyecto, seguir estos pasos:
 

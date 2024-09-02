@@ -1,0 +1,19 @@
+init_step: step_0
+steps:
+- id: step_0
+  type: CallAPI
+  inputs: {}
+  outputs: {}
+  next:
+    type: direct
+    step: step_2
+- id: step_1
+  type: sendUser
+  inputs: {}
+  outputs: {}
+  next: {}
+- id: step_2
+  type: parseActivity
+  inputs: {}
+  outputs: {}
+  next: {}

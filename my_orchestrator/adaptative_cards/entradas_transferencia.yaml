@@ -1,0 +1,33 @@
+- Choice:
+    id: cuenta_origen
+    options: {cuentas_origen}
+    label: "Cuenta de Origen"
+    required: true
+    default: {default_origen}
+- Choice:
+    id: cuenta_destino
+    options: {cuentas_destino}
+    label: "Cuenta Destino"
+    required: true
+    default: {default_destino}
+- FillIn:
+    id: monto
+    input_type: number
+    label: "monto"
+    default: {default_monto}
+    required: true
+- Choice:
+    id: moneda
+    options:
+      - title: "UY"
+        value: "0"
+      - title: "USD"
+        value: "22"
+    default: "{default_moneda}"
+    label: "moneda"
+    required: true
+- ButtonAd:
+    id: transferir
+    actions:
+        - submit
+    label: "Transferir"

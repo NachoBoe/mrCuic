@@ -1,0 +1,49 @@
+flow:
+  name: "ConsultaSaldo"
+  description: "Este flujo permite consultar el saldo de las cuentas del usuario."
+  trigger_phrases: 
+    - "quiero ver mis cuentas"
+    - "consultar saldo"
+    - "saldo"
+    - "mis cuentas"
+  init_step: "step_1"
+  steps:
+    - id: step_1
+      type: CallAPI
+      descripcion: "Obtiene las cuentas del usuario."
+      inputs:
+      type_params:
+        endpoint: "get_accounts"
+        method_type: "post"
+        data:
+          Oper: 1
+          Estado: "'C'"
+          Page: 1
+          Moneda: [0]
+      outputs:
+        cuentas: "response.data.Cuentas"
+        nombre_cuentas: "[x['Nombre'] for x in response.data.Cuentas]"
+        saldo_cuentas: "[x['Saldo'] for x in response.data.Cuentas]"
+        moneda_cuentas: "[x['Moneda'] for x in response.data.Cuentas]"
+        numero_cuentas: "[x['ProdShort'] for x in response.data.Cuentas]"
+      next:
+        type: "direct"
+        step: "step_2"
+
+    - id: step_2
+      type: sendUser
+      descripcion: "Envía el saldo de las cuentas del usuario."
+      inputs:
+          cuentas: cuentas
+          nombre_cuentas: nombre_cuentas
+          saldo_cuentas: saldo_cuentas
+          moneda_cuentas: moneda_cuentas
+          numero_cuentas: numero_cuentas
+      type_params:
+        activity:
+          type: "message"
+          content: "'\\n\\n'.join([nom + '\\n' + num + '\\n' + mon + sald  for nom,num,mon,sald in zip(nombre_cuentas, numero_cuentas, moneda_cuentas, saldo_cuentas)])"
+      outputs:
+      next:
+        type: "direct"
+        step: "END"        

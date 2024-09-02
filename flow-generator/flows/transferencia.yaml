@@ -1,0 +1,279 @@
+flow:
+  name: "Transferencias"
+  description: "Este flujo permite realizar una transferencia."
+  trigger_phrases: 
+    - "quiero hacer una transferencia"
+    - "transferir"
+  init_step: step_1
+  
+  steps:
+    - id: step_1
+      type: parseActivity
+      descripcion: "Extrae del mensaje disparador del flujo si se encuentra implicito el monto, la moneda, la cuenta de origen, el tipo de destinatario o la cuenta de destino."
+      type_params:
+        expected_type: "message"
+        extract:
+          monto:
+              descripcion: "Monto a transferir"
+              tipo: "float"
+              required: "False"
+          moneda:
+              descripcion: "Moneda de la transferencia. Las opciones son pesos uruguayos (corresponde a 0) o dolares (corresponde a 22)"
+              tipo: "integer"
+              required: "False"
+          cuenta_origen:
+              descripcion: "Nombre de la cuenta de origen de la transferencia"
+              tipo: "string"
+              required: "False"
+          tipo_destinatario:
+              descripcion: "Tipo de destinatario de la transferencia. Las opciones son: 0 (en caso de querer transferir a una cuenta propia), 1 (en caso de querer transferir a un beneficiario precargado) o 2 (en caso de querer transferir a un nuevo beneficiario)"
+              tipo: "integer"
+              required: "False"
+          cuenta_destino:
+              descripcion: "Nombre de la cuenta de destino de la transferencia"
+              tipo: "string"
+              required: "False"
+      inputs:
+      outputs:
+        monto: parsed_result["monto"]
+        moneda: parsed_result["moneda"]
+        cuenta_origen_nomb: parsed_result["cuenta_origen"]
+        tipo_destinatario: parsed_result["tipo_destinatario"]
+        cuenta_destino_nomb: parsed_result["cuenta_destino"]
+      next:
+        type: conditional
+        conditions:
+          - condition: not parsed_result["tipo_destinatario"] is None
+            step: step_5
+          - condition: parsed_result["tipo_destinatario"] is None
+            step: step_2
+
+    - id: step_2
+      type: sendUser
+      descripcion: "Pregunta al usuario si el destinatario de la transferencia es una cuenta propia, un beneficiario precargado o un nuevo beneficiario."
+      inputs:
+      type_params:
+        activity:
+          type: "message"
+          content: "'Elije una de las siguientes opciones: \\n - Mis Cuentas \\n - Mis Beneficiarios \\n - Nuevo Beneficiario'"
+      outputs:
+      next:
+        type: "direct"
+        step: "step_3"  
+
+    - id: step_3
+      type: sendUser
+      descripcion: "Envía al usuario las opciones de destinatario de la transferencia como botones de sugerencia."
+      inputs:
+      type_params:
+        activity:
+          type: "suggestion"
+          content: ["Mis Cuentas", "Mis Beneficiarios", "Nuevo Beneficiario"]
+      outputs:
+      next:
+        type: "direct"
+        step: "step_4"  
+
+    - id: step_4
+      type: parseActivity
+      descripcion: "Extrae del mensaje del usuario el tipo de destinatario de la transferencia."
+      type_params:
+        expected_type: "message"
+        extract:
+          tipo_destinatario:
+              descripcion: "Tipo de destinatario de la transferencia. Las opciones son: 0 (en caso de querer transferir a una cuenta propia), 1 (en caso de querer transferir a un beneficiario precargado) o 2 (en caso de querer transferir a un nuevo beneficiario)"
+              tipo: "integer"
+              required: "True"
+      inputs:
+      outputs:
+        tipo_destinatario: parsed_result["tipo_destinatario"]
+      next:
+        type: "direct"
+        step: "step_5"
+
+    - id: step_5
+      type: CallAPI
+      descripcion: "Obtiene las cuentas del usuario."
+      inputs:
+        cuenta_origen_nomb: cuenta_origen_nomb
+        cuenta_destino_nomb: cuenta_destino_nomb
+      type_params:
+        endpoint: "get_accounts"
+        method_type: "post"
+        data:
+          Oper: 1
+          Estado: "'C'"
+          Page: 1
+          Moneda: [0]
+      outputs:
+        cuentas: "response.data.Cuentas"
+        default_origen: "[x['Producto'] for x in response.data.Cuentas][find_closest_match(cuenta_origen_nomb, [x['Nombre'] for x in response.data.Cuentas])]"
+        default_destino: "[x['Producto'] for x in response.data.Cuentas][find_closest_match(cuenta_destino_nomb, [x['Nombre'] for x in response.data.Cuentas])]"
+      next:
+        type: "direct"
+        step: "step_6"
+
+    - id: step_6
+      type: sendUser
+      descripcion: "Pregunta al usuario el monto, la moneda y la cuenta de origen y la cuenta de destino de la transferencia."
+      inputs:
+        monto: monto
+        moneda: moneda
+        cuentas: cuentas
+        default_origen: default_origen
+        default_destino: default_destino
+      type_params:
+        activity:
+          type: "adaptive_card"
+          content: 
+            card_path: "entradas_transferencia.yaml"
+            card_data: 
+              cuentas_origen: "[{'title':x['Nombre'] + ' ' + str(x['Saldo']) + str(x['Moneda']), 'value': x['Producto']} for x in cuentas]"
+              cuentas_destino: "[{'title':x['Nombre'] + ' ' + str(x['Saldo']) + str(x['Moneda']), 'value': x['Producto']} for x in cuentas]"
+              default_monto: monto
+              default_moneda: moneda
+              default_origen: f"'{default_origen}'"
+              default_destino: f"'{default_destino}'"
+      outputs:
+      next:
+        type: "direct"
+        step: "step_7"
+
+    - id: step_7
+      type: parseActivity
+      descripcion: "Extrae del mensaje del usuario el monto, la moneda, la cuenta de origen y la cuenta de destino de la transferencia."
+      type_params:
+        expected_type: "adaptive_card_answer"
+        extract:
+          cuenta_origen:
+              descripcion: "Nombre de la cuenta de origen de la transferencia"
+              tipo: "string"
+              required: "True"
+          cuenta_destino:
+              descripcion: "Nombre de la cuenta de destino de la transferencia"
+              tipo: "string"
+              required: "True"
+          monto:
+              descripcion: "Monto a transferir"
+              tipo: "float"
+              required: "True"
+          moneda:
+              descripcion: "Moneda de la transferencia. Las opciones son pesos uruguayos (corresponde a 0) o dolares (corresponde a 22)"
+              tipo: "integer"
+              required: "True"
+      inputs:
+      outputs:
+        cuenta_origen: parsed_result["cuenta_origen"]
+        cuenta_destino: parsed_result["cuenta_destino"]
+        monto: parsed_result["monto"]
+        moneda: parsed_result["moneda"]
+      next:
+        type: "direct"
+        step: "step_8"
+
+    - id: step_8
+      type: CallAPI
+      descripcion: "Realiza la primera instancia de la transferencia."
+      inputs:
+        cuenta_origen: cuenta_origen
+        cuenta_destino: cuenta_destino
+        monto: monto
+        moneda: moneda
+      type_params:
+        endpoint: "transfers_myaccounts_confirm"
+        method_type: "post"
+        data:
+          CuentaOrigen: cuenta_origen
+          CuentaDestino: cuenta_destino
+          Monto: monto
+          Moneda: moneda
+          Concepto: "'Referencia'"
+      outputs:
+        conf_code: "response.data.Numerador"
+      next:
+        type: "direct"
+        step: "step_9"
+      
+    - id: step_9
+      type: sendUser
+      descripcion: "Envía al usuario el código de confirmación de la transferencia."
+      inputs:
+        conf_code: conf_code
+      type_params:
+        activity:
+          type: "message"
+          content: "'Para confirmar la transferencia, envie el siguiente código de 4 dígitos: ' + str(conf_code)"
+      outputs:
+      next:
+        type: "direct"
+        step: "step_10"
+
+    - id: step_10
+      type: parseActivity
+      descripcion: "Extrae del mensaje del usuario el código de confirmación de la transferencia."
+      type_params:
+        expected_type: "message"
+        extract:
+          conf_code_recieved:
+              descripcion: "Codigo que debe enviar el usuario para confirmar la transferencia."
+              tipo: "integer"
+              required: "True"
+      inputs:
+        conf_code: conf_code
+      outputs:
+        conf_code_recieved: parsed_result["conf_code_recieved"]
+      next:
+        type: "conditional"
+        conditions:
+          - condition: parsed_result["conf_code_recieved"] == conf_code
+            step: step_11
+          - condition: parsed_result["conf_code_recieved"] != conf_code
+            step: step_13
+
+    - id: step_11
+      type: CallAPI
+      descripcion: "Si el código es correcto, se realiza la segunda instancia de la transferencia."
+      inputs:
+        conf_code: conf_code
+      type_params:
+        endpoint: "transfers_myaccounts_reconfirm"
+        method_type: "post"
+        data:
+          Numerador: conf_code
+      outputs:
+        confirmation_data: response
+      next:
+        type: "conditional"
+        conditions:
+          - condition: response.success == True
+            step: step_12
+          - condition: response.success == False
+            step: step_13
+
+    - id: step_12
+      type: sendUser
+      descripcion: "Envía al usuario la confirmación de la transferencia."
+      inputs:
+        confirmation_data: confirmation_data
+      type_params:
+        activity:
+          type: "message"
+          content: "'Transferencia realizada con éxito. El Numero de Control es:' + str(confirmation_data.data.NroControl)"
+      outputs:
+      next:
+        type: "direct"
+        step: "END"
+
+    - id: step_13
+      type: sendUser
+      descripcion: "Envía al usuario un mensaje de error en caso de que el código de confirmación sea incorrecto."
+      inputs:
+      type_params:
+        activity:
+          type: "message"
+          content: "'Código incorrecto. La transferencia fue cancelada'"
+      outputs:
+      next:
+        type: "direct"
+        step: "END"
+

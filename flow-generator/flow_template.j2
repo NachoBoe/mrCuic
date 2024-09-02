@@ -1,0 +1,121 @@
+import requests
+import json
+from pydantic import BaseModel
+from typing import List, Optional, Callable
+
+from models.src import Flow, Step, Activity
+from models.utils import bt_api, find_closest_match
+
+class DictToObj:
+    def __init__(self, dictionary):
+        for key, value in dictionary.items():
+            if isinstance(value, dict):
+                value = DictToObj(value)
+            setattr(self, key, value)
+    
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+class {{ flow.name }}(Flow):
+    def __init__(self):
+        super().__init__(
+            trigger_phrases={{ flow.trigger_phrases }},
+            steps={
+                {% for step in flow.steps-%}
+                "{{ step.id}}": Step(self.{{ step.id }}, "{{ step.id }}", "{{ step.type }}", "{{ step.descripcion }}"),
+                {% endfor -%}
+            },
+            descripcion="{{ flow.description }}",
+            init_step="{{ flow.init_step }}"
+        )
+        self.FLOW_MEMORY = dict()
+
+    {% for step in flow.steps %}
+    async def {{ step.id }}(self, activity: Activity, orquestrator):
+        
+        # OBTENER ENTRADAS
+        {% if step.inputs -%}
+        {% for input, path in step.inputs.items() -%}
+        {{ input }} = self.FLOW_MEMORY["{{ path }}"]
+        {% endfor -%}
+        {% endif -%}
+
+        {#- EJECUTAR ACCION (SEGUN TIPO) -#}
+
+        {#- 1) CALLAPI -#}
+        {% if step.type == 'CallAPI' -%}
+        # LLAMAR API
+        endpoint = "{{ step.type_params.endpoint }}"
+        data = dict()
+        {% for key, value in step.type_params.data.items() -%}
+        data["{{ key }}"] = {{ value }}
+        {% endfor -%}
+        method_type = "{{ step.type_params.method_type }}"
+        response = bt_api(method_type, endpoint, data)
+        response = DictToObj(response)
+        {% endif -%}
+
+        {#- 2) SENDUSER -#}
+        {% if step.type == 'sendUser' -%}
+        # ENVIAR ACTIVIDAD A USUARIO
+        {% if step.type_params.activity.type == 'adaptive_card' -%}
+        with open("adaptative_cards/{{step.type_params.activity.content.card_path}}", 'r') as file:
+            yaml_template = file.read()
+        data = dict()
+        {% for key, value in step.type_params.activity.content.card_data.items() -%}
+        data["{{ key }}"] = {{ value }}
+        {% endfor -%}
+        formatted_yaml = yaml_template.format(**data)
+        content = formatted_yaml
+        {% else -%}
+        content = {{ step.type_params.activity.content }}
+        {% endif -%}
+
+        response = Activity(
+            type="{{ step.type_params.activity.type }}",
+            content=content,
+            sender="ai",
+        )
+        await orquestrator.send_activity(response)
+        {% endif -%}
+
+        {#- 3) PARSEACTION -#}
+        {% if step.type == 'parseActivity' -%}
+        # PARSEAR ACTIVIDAD ENTRANTE
+        if activity.type != "{{step.type_params.expected_type}}":
+            return {"action": "callHandler", "handler": "basic_handler", "error": f"Se esperaba una respuesta tipo {{step.type_params.expected_type}}, pero se recibio una respuesta tipo {activity.type}"}
+        entities_metadata = {{ step.type_params.extract | tojson }}
+        {% if step.type_params.expected_type == 'message' -%}
+        parsed_result = orquestrator.nlp_service.extract_entities(activity, entities_metadata, orquestrator.flow_memory)
+        {% endif -%}
+        {% if step.type_params.expected_type == 'adaptive_card_answer' -%}
+        parsed_result = json.loads(activity.content)
+        {% endif -%}
+        for entity in entities_metadata.keys():
+            if entity not in parsed_result.keys():
+                if entities_metadata[f"{entity}"]["required"] == "False":
+                    parsed_result[f"{entity}"] = None
+                else:
+                    return {"action": "callHandler", "handler": "basic_handler", "error": f"El campo {entity} es requerido"}
+        {% endif -%}    
+
+        {#- OBTENER SALIDAS -#}
+        {% if step.outputs -%}
+        # OBTENER SALIDAS
+        {% for output, path in step.outputs.items()-%}
+        self.FLOW_MEMORY["{{ output }}"] = {{ path }}
+        {% endfor -%}
+        {% endif -%}
+
+        {#- DECIDIR PROXIMO STEP -#}
+        # PROXIMO PASO
+        {% if step.next.type == 'direct'-%}
+        return {"action": "advance","next_step": "{{ step.next.step }}"}
+        {% elif step.next.type == 'conditional'-%}
+        {% for condition in step.next.conditions -%}
+        if {{ condition.condition }}:
+            return {"action": "advance","next_step": "{{ condition.step }}"}
+        {% endfor -%}
+        {% endif -%}
+        
+    {% endfor -%}

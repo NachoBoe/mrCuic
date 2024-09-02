@@ -1,0 +1,17 @@
+/* src/Node.css */
+
+.node {
+    position: absolute;
+    padding: 10px;
+    background-color: #fff;
+    border: 2px solid #4CAF50;
+    border-radius: 5px;
+    cursor: move;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  
+  .node.selected {
+    background-color: #e6ffe6;
+    border-color: #66bb66;
+  }
+  
